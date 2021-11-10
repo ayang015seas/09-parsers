@@ -15,9 +15,14 @@ This exercise is based on the following definitions from the `Parsers`
 lecture. Make sure that you have downloaded the solution.
 -}
 
-import ParserCombinators (Parser, char, doParse, filter, satisfy, string)
+-- import ParserCombinators (Parser, char, doParse, filter, satisfy, string)
+
+import Control.Monad (liftM2, liftM3)
+import Parsers
 import System.IO
 import Prelude hiding (filter)
+
+-- import Parsers
 
 -- Note that this line imports these functions as well as the instance for Parser
 -- for the Functor, Applicative and Alternative classes.
@@ -42,12 +47,15 @@ PCDATA. Let's define a function that recognizes them.
 reserved :: Char -> Bool
 reserved c = c `elem` ['/', '<', '>']
 
+notReserved :: Char -> Bool
+notReserved c = not (reserved c)
+
 {-
 Use this definition to parse a maximal nonempty sequence of nonreserved characters:
 -}
 
 text :: Parser String
-text = undefined
+text = some (satisfy notReserved)
 
 {-
 ~~~~{.haskell}
@@ -63,7 +71,7 @@ and then use this definition to parse nonreserved characters into XML.
 -}
 
 pcdata :: Parser SimpleXML
-pcdata = undefined
+pcdata = fmap PCDATA text
 
 {-
 ~~~~{.haskell}
@@ -75,7 +83,9 @@ Parse an empty element, like `"<br/>"`
 -}
 
 emptyContainer :: Parser SimpleXML
-emptyContainer = undefined
+emptyContainer = char '<' *> fmap (`Element` []) text <* char '/' <* char '>'
+
+-- parser result is text
 
 {-
 ~~~~~{.haskell}
@@ -91,7 +101,7 @@ NOT need to make sure that the closing tag matches the open tag.
 -}
 
 container :: Parser SimpleXML -> Parser SimpleXML
-container p = undefined
+container p = Element <$> (char '<' *> text <* char '>') <*> manyP p <* (string "</" *> text <* char '>')
 
 {-
 ~~~~~{.haskell}
@@ -109,7 +119,7 @@ Now put the above together to construct a parser for simple XML data:
 -}
 
 xml :: Parser SimpleXML
-xml = undefined
+xml = emptyContainer <|> container xml <|> pcdata
 
 {-
 ~~~~~{.haskell}

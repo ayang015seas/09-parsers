@@ -13,6 +13,7 @@ import Control.Applicative
 import Control.Monad (guard)
 import Data.Char
 import Text.Read (readMaybe)
+import qualified Text.Read as Maybe
 import Prelude hiding (filter)
 
 {-
@@ -171,7 +172,11 @@ char of a (nonempty) string and interprets it as an int in the range
 -}
 
 oneDigit :: Parser Int
-oneDigit = undefined
+oneDigit = P $ \s -> case s of
+  (c : cs) -> case Maybe.readMaybe [c] of
+    Nothing -> Nothing
+    Just a -> return (a, cs)
+  [] -> Nothing
 
 {-
 ~~~~~{.haskell}
@@ -202,7 +207,9 @@ if the first character satisfies the predicate.
 -}
 
 satisfy :: (Char -> Bool) -> Parser Char
-satisfy f = undefined
+satisfy f = P $ \s -> case s of
+  (c : cs) -> if f c then return (c, cs) else Nothing
+  [] -> Nothing
 
 {-
 ~~~~~{.haskell}
@@ -288,7 +295,9 @@ Of course! Like lists, the type constructor `Parser` is a functor.
 
 instance Functor Parser where
   fmap :: (a -> b) -> Parser a -> Parser b
-  fmap = undefined
+  fmap f a = P $ \s -> do
+    (c, cs) <- doParse a s
+    return (f c, cs)
 
 {-
 With `get`, `satisfy`, `filter`, and `fmap`, we now have a small library
@@ -331,8 +340,11 @@ Nothing
 Finally, finish this parser that should parse just one specific `Char`:
 -}
 
+specificChar :: Char -> Parser Char
+specificChar c = satisfy (== c)
+
 char :: Char -> Parser Char
-char c = undefined
+char c = satisfy (== c)
 
 {-
 ~~~~~~~~~~~{.haskell}
@@ -370,7 +382,10 @@ other and returns the pair of resulting values...
 -}
 
 pairP0 :: Parser a -> Parser b -> Parser (a, b)
-pairP0 = undefined
+pairP0 pa pb = P $ \s -> do
+  (c1, cs) <- doParse pa s
+  (c2, cs') <- doParse pb cs
+  return ((c1, c2), cs')
 
 {-
 and use that to rewrite `twoChar` more elegantly like this:
@@ -414,7 +429,7 @@ signedDigit0 = P $ \s -> do
 {-
 ~~~~~{.haskell}
 ghci> doParse signedDigit0 "-1"
-ghci> doParse signedDigit0 "+3"
+ghci> doParse signedDigit0 "+1"
 ~~~~~
 
 Can we generalize this pattern? What is the type when `oneOp` and `oneDigit`
@@ -459,7 +474,7 @@ Let's go back and reimplement our examples with the applicative combinators:
 -}
 
 twoChar :: Parser (Char, Char)
-twoChar = pure (,) <*> get <*> get
+twoChar = (,) <$> get <*> get
 
 signedDigit :: Parser Int
 signedDigit = oneOp <*> oneDigit
@@ -477,7 +492,7 @@ our more general pairing parser (`pairP`) like this:
 -}
 
 pairP :: Parser a -> Parser b -> Parser (a, b)
-pairP p1 p2 = pure (,) <*> p1 <*> p2
+pairP p1 p2 = (,) <$> p1 <*> p2
 
 {-
 Or, more idiomatically, we can replace `pure f <*>` with `f <$>`. (The `hlint`
@@ -545,7 +560,9 @@ see if you can figure out an appropriate definition of `(>>=)`.
 -}
 
 bindP :: Parser a -> (a -> Parser b) -> Parser b
-bindP = undefined
+bindP pa f = P $ \s -> do
+  (c, cs) <- doParse pa s
+  doParse (f c) cs
 
 {-
 Recursive Parsing
@@ -575,7 +592,7 @@ For fun, try to write `string` using `foldr` for the list recursion.
 -}
 
 string' :: String -> Parser String
-string' = foldr undefined undefined
+string' = foldr (\x acc -> (:) <$> char x <*> acc) (pure "")
 
 {-
 Furthermore, we can use natural number recursion to write a parser that grabs
@@ -774,7 +791,10 @@ implement a parser that parses zero or more occurrences of `p`, separated by
 -}
 
 sepBy :: Parser a -> Parser b -> Parser [a]
-sepBy p sep = undefined
+sepBy p sep = (:) <$> p <*> many (sep *> p) <|> pure []
+
+-- first half is 0 or more occurences of P
+-- second half is the handling of many sep p
 
 {-
 ~~~~~{.haskell}
